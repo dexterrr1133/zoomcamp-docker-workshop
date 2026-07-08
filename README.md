@@ -1,2 +1,2 @@
 # zoomcamp-docker-workshop
-Workshop codebase
+Workshop codebases
