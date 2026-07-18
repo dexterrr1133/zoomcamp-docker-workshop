@@ -1,48 +1,148 @@
 # zoomcamp-docker-workshop
-Workshop codebases
 
-## Zoomcamp Notes
+Workshop notes and Docker cheat sheet.
+
+## Core Docker Commands
+
+### Run a temporary container
+
+```bash
 docker run -it ubuntu
-=stateless container, the changes are gone when used again
+```
 
+A stateless container; changes disappear when the container is removed.
+
+### List containers
+
+```bash
 docker ps -a
-=to see what containers are saved
+```
 
+Shows all containers, including stopped ones.
+
+### Remove containers
+
+```bash
 docker rm $(docker ps -aq)
-=rm is for remove
-=a arguement is for all
-=q arguement is for quiet
+```
 
-docker build -t test:pandas . 
--t = for creating a tag for your docker image
-test:pandas = the name of the docker image
-. = tells that every file and folder in the current directory to send it to the docker engine when building
+Removes all containers.
 
-docker run -it --rm entrypoint:bash test:pandas 12
--it = iteractive terminal
---rm = automatically removes docker image after exiting
-entrypoint:bash = forces the container to start in bash
+### Build an image
 
-uv init 
-= creates an environment
+```bash
+docker build -t test:pandas .
+```
 
+`-t` sets the image name and tag. `.` sends the current directory as the build context.
+
+### Run an image interactively
+
+```bash
+docker run -it --rm --entrypoint bash test:pandas
+```
+
+`--rm` removes the container after exit. `--entrypoint bash` starts a shell instead of the default command.
+
+## Python Setup
+
+```bash
+uv init
 uv add pandas pyarrow
-= adds the dependencies to the environment
-
-docker run -it --rm \
-    -e POSTGRES_USER="root" \
-    -e POSTGRES_PASSWORD="root" \
-    -e POSTGRES_DB="ny_taxi" \
-    -v ny_taxi_postgres_data:/var/lib/postgresql \
-    -p 5432:5432 \
-    postgres:18
--e arguement is for setting the environment variables
--v arguement is for volume mapping
--p arguement is for port mapping
-postgres:18 is for setting the version
-
 uv add --dev pgcli
-=add pgcli to only dev dependency, better not to add this to the docker container
+```
 
+`uv init` creates the environment. `uv add --dev pgcli` keeps `pgcli` in the dev dependencies only.
+
+## PostgreSQL and pgAdmin
+
+### Start Postgres
+
+```bash
+docker run -it --rm \
+  -e POSTGRES_USER="root" \
+  -e POSTGRES_PASSWORD="root" \
+  -e POSTGRES_DB="ny_taxi" \
+  -v ny_taxi_postgres_data:/var/lib/postgresql \
+  -p 5432:5432 \
+  --network=pg-network \
+  --name pgdatabase \
+  postgres:18
+```
+
+### Connect with pgcli
+
+```bash
 uv run pgcli -h localhost -p 5432 -u root -d ny_taxi
+```
+
 Inside pgcli, use `\dt` to list tables.
+
+### Start pgAdmin
+
+```bash
+docker run -it \
+  --network=pg-network \
+  -e PGADMIN_DEFAULT_EMAIL="admin@admin.com" \
+  -e PGADMIN_DEFAULT_PASSWORD="root" \
+  -e PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION=False \
+  -e PGADMIN_CONFIG_SESSION_COOKIE_SAMESITE=None \
+  -e PGADMIN_CONFIG_SESSION_COOKIE_SECURE=True \
+  -e PGADMIN_CONFIG_PROXY_X_FOR_COUNT=1 \
+  -e PGADMIN_CONFIG_PROXY_X_PROTO_COUNT=1 \
+  -e PGADMIN_CONFIG_PROXY_X_HOST_COUNT=1 \
+  -e PGADMIN_CONFIG_PROXY_X_PORT_COUNT=1 \
+  -v pgadmin_data:/var/lib/pgadmin \
+  -p 8086:80 \
+  dpage/pgadmin4:8.13
+```
+
+## Ingest Script
+
+```bash
+docker build -t taxi_ingest:v002 .
+
+docker run -it \
+  --network=pg-network \
+  taxi_ingest:v002 \
+  --pg-user=root \
+  --pg-pass=root \
+  --pg-host=pgdatabase \
+  --pg-port=5432 \
+  --pg-db=ny_taxi \
+  --target-table=yellow_taxi_trips
+```
+
+## Docker Compose Workflow
+
+```bash
+docker compose -f pipeline/docker-compose.yaml config
+docker compose down
+docker compose up
+```
+
+Useful checks:
+
+```bash
+docker compose -f pipeline/docker-compose.yaml ps
+docker compose -f pipeline/docker-compose.yaml logs -f ingest
+```
+
+## Commands Used Today
+
+```bash
+docker rm -f pgadmin
+docker network rm pg-network
+docker volume rm pipeline_ny_taxi_postgres_data
+docker compose down
+docker compose up
+docker compose ps
+docker compose logs --tail=80 ingest
+```
+
+What these helped diagnose:
+
+- `docker rm -f pgadmin` cleared the old standalone pgAdmin container name conflict.
+- `docker network rm pg-network` only works after containers are removed from it.
+- `docker volume rm pipeline_ny_taxi_postgres_data` was needed because Postgres 18 expects the data mount at `/var/lib/postgresql`.
+- `docker compose logs --tail=80 ingest` showed the loader was waiting on Postgres readiness.

@@ -1,0 +1,67 @@
+services:
+  db:
+    image: postgres:18
+    container_name: pgdatabase
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: ny_taxi
+    volumes:
+      - ny_taxi_postgres_data:/var/lib/postgresql
+    ports:
+      - "5432:5432"
+    networks:
+      - pg-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d ny_taxi"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:8.13
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: root
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "False"
+      PGADMIN_CONFIG_SESSION_COOKIE_SAMESITE: "None"
+      PGADMIN_CONFIG_SESSION_COOKIE_SECURE: "True"
+      PGADMIN_CONFIG_PROXY_X_FOR_COUNT: "1"
+      PGADMIN_CONFIG_PROXY_X_PROTO_COUNT: "1"
+      PGADMIN_CONFIG_PROXY_X_HOST_COUNT: "1"
+      PGADMIN_CONFIG_PROXY_X_PORT_COUNT: "1"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "8086:80"
+    depends_on:
+      - db
+    networks:
+      - pg-network
+
+  ingest:
+    build:
+      context: .
+      dockerfile: dockerfile
+    image: taxi_ingest:v002
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - --pg-user=root
+      - --pg-pass=root
+      - --pg-host=pgdatabase
+      - --pg-port=5432
+      - --pg-db=ny_taxi
+      - --target-table=yellow_taxi_trips
+    networks:
+      - pg-network
+
+volumes:
+  ny_taxi_postgres_data:
+  pgadmin_data:
+
+networks:
+  pg-network:
+    name: pg-network
