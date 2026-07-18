@@ -40,3 +40,9 @@ docker run -it --rm \
 -v arguement is for volume mapping
 -p arguement is for port mapping
 postgres:18 is for setting the version
+
+uv add --dev pgcli
+=add pgcli to only dev dependency, better not to add this to the docker container
+
+uv run pgcli -h localhost -p 5432 -u root -d ny_taxi
+Inside pgcli, use `\dt` to list tables.
